@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.vscode/
+.idea/
+.DS_Store
+
+# Script output (snapshots, recordings, downloads) — not repo content
+*.jpg
+*.jpeg
+*.mp4
+*.mkv
+*.h264
+out/
+output/
