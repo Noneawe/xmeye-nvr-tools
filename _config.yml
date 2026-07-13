@@ -1,0 +1,4 @@
+theme: jekyll-theme-cayman
+title: XMEye NVR/DVR — standalone tools
+description: Standalone CLI tools (recon, live monitoring, archive/snapshot retrieval) for XMEye/NetSurveillance/DVRIP NVR/DVR devices. Companion to ha-xmeye-nvr.
+show_downloads: true
