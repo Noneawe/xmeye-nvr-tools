@@ -10,8 +10,14 @@ konto testowe ma pełną listę `AuthorityList` identyczną z kontami admina). P
 `snapshot_probe.py` i PROTOCOL_NOTES.md in the ha-xmeye-nvr repo po szczegóły tej ślepej uliczki.
 
 Działająca alternatywa (ten skrypt): `OPMonitorClaim`+`OPMonitorStart` (wzorzec z
-go2rtc, potwierdzony w `opmonitor_probe.py`), złap pierwszą kompletną klatkę I-frame
-(H265), zdekoduj do obrazu przez PyAV (bundluje własny FFmpeg, nie wymaga sudo/apt).
+go2rtc, potwierdzony w `opmonitor_probe.py`), złap pierwszą kompletną klatkę I-frame,
+zdekoduj do obrazu przez PyAV (bundluje własny FFmpeg, nie wymaga sudo/apt).
+Kodek NIE jest zakładany z góry — różni się między urządzeniami (Rejestrator #1:
+HEVC; starsze/analogowe np. Rejestrator #2: H.264) i próbujemy obu (`decode_iframe()`)
+zamiast zgadywać jeden na sztywno (patrz PROTOCOL_NOTES.md in the ha-xmeye-nvr repo —
+dokładnie ten bug wcześniej znaleziony w `periodic_snapshots.py`: `av.open(format=
+"hevc")` nie rzuca wyjątku na danych H.264, dopiero próba dekodowania klatki cicho
+zwraca nic).
 
 Zależności (NIE tylko standardowa biblioteka, w przeciwieństwie do reszty skryptów
 w repo): `pip install av pillow`.
@@ -162,14 +168,34 @@ def main():
     })
 
     print("Czekam na pierwszą kompletną klatkę I-frame...")
-    h265_data = read_one_iframe(sock, args.timeout)
-    print(f"Odebrano {len(h265_data)} bajtów H265 (Annex-B).")
+    raw_data = read_one_iframe(sock, args.timeout)
+    print(f"Odebrano {len(raw_data)} bajtów surowej klatki (Annex-B).")
 
-    container = av.open(io.BytesIO(h265_data), format="hevc")
-    frame = next(container.decode(video=0))
-    print(f"Zdekodowano klatkę: {frame.width}x{frame.height} ({frame.format.name})")
+    frame, codec = decode_iframe(raw_data)
+    print(f"Zdekodowano klatkę ({codec}): {frame.width}x{frame.height} ({frame.format.name})")
     frame.to_image().save(args.out, quality=90)
     print(f"Zapisano zdjęcie do {args.out}")
+
+
+def decode_iframe(data: bytes):
+    """Kodek archiwum/live różni się między urządzeniami (Rejestrator #1: HEVC;
+    starsze/analogowe: H.264) i nie da się go przewidzieć z góry. `av.open()`
+    NIE rzuca wyjątku przy złym wyborze formatu na prawdziwych danych — dopiero
+    wymuszone pobranie pierwszej klatki (`next(decoder)`) to realnie weryfikuje
+    (patrz PROTOCOL_NOTES.md in the ha-xmeye-nvr repo, ten sam bug znaleziony
+    wcześniej w periodic_snapshots.py)."""
+    errors = []
+    for fmt in ("hevc", "h264"):
+        try:
+            container = av.open(io.BytesIO(data), format=fmt)
+            frame = next(container.decode(video=0))
+            return frame, fmt
+        except Exception as exc:  # noqa: BLE001 — celowo szerokie, to tylko próba kodeka
+            errors.append(f"{fmt}: {exc!r}")
+    raise RuntimeError(
+        "Nie udało się zdekodować klatki żadnym znanym kodekiem (hevc, h264): "
+        + "; ".join(errors)
+    )
 
 
 if __name__ == "__main__":
